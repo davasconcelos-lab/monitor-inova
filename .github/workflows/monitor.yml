@@ -1,0 +1,55 @@
+# Monitor externo de disponibilidade (roda nos servidores do GitHub, fora da VPS).
+# A cada 10 minutos confere os sites de sites.txt. Se um cair, abre uma issue "Fora do ar: <site>" (o GitHub manda
+# e-mail para quem acompanha o repositório); quando voltar, comenta quanto tempo ficou fora e fecha a issue.
+name: monitor
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency: monitor
+
+permissions:
+  issues: write
+  contents: write
+
+jobs:
+  verificar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: conferir sites
+        run: ./verificar.sh
+      - name: abrir ou fechar avisos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create fora-do-ar --color B60205 --description "Site fora do ar (monitor)" 2>/dev/null || true
+          agora=$(TZ=America/Sao_Paulo date '+%d/%m/%Y %H:%M')
+          while IFS=$'\t' read -r nome estado detalhe; do
+            titulo="Fora do ar: $nome"
+            aberta=$(gh issue list --state open --label fora-do-ar --search "in:title \"$titulo\"" --json number,title,createdAt \
+                     --jq ".[] | select(.title == \"$titulo\") | \"\(.number) \(.createdAt)\"" | head -1)
+            if [ "$estado" = falha ] && [ -z "$aberta" ]; then
+              gh issue create --label fora-do-ar --title "$titulo" --body "Detectado às $agora (horário de Brasília) pelo monitor externo.
+
+          $detalhe
+
+          Na VPS: \`docker service ps\` da stack e \`docker service logs\` do app. Esta issue fecha sozinha quando o site voltar."
+            elif [ "$estado" = ok ] && [ -n "$aberta" ]; then
+              num=${aberta%% *}; desde=${aberta#* }
+              min=$(( ( $(date +%s) - $(date -d "$desde" +%s) ) / 60 ))
+              gh issue close "$num" --comment "Voltou às $agora (fora por cerca de $min min). $detalhe"
+            fi
+          done < resultado.tsv
+      # O GitHub desliga agendamentos de repositórios públicos sem atividade por 60 dias: um registro por mês evita isso.
+      - name: manter ativo
+        run: |
+          mes=$(date +%Y-%m)
+          if [ "$(cat ativo.txt 2>/dev/null)" != "$mes" ]; then
+            echo "$mes" > ativo.txt
+            git config user.name "monitor" && git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add ativo.txt && git commit -m "monitor ativo em $mes" && git push
+          fi

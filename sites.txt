@@ -1,0 +1,3 @@
+# nome | endereço | texto que a resposta precisa conter
+# Uma linha por site. Linhas com # são ignoradas.
+Inova Assina | https://assina.inovafiec.com.br/api/saude | "ok":true
