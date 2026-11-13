@@ -24,5 +24,5 @@ while IFS='|' read -r nome url esperado; do
   fi
   if [ -z "$detalhe" ]; then printf '%s\tok\tresposta em %ss\n' "$nome" "$tempo" >> resultado.tsv
   else printf '%s\tfalha\t%s\n' "$nome" "$detalhe" >> resultado.tsv; fi
-done < <(tr -d '' < sites.txt)
+done < <(tr -d '\r' < sites.txt)
 cat resultado.tsv
